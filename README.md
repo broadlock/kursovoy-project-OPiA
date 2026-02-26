@@ -15,36 +15,28 @@
 #include <windows.h>
 #endif
 
- /*
-  * Функция: Вычислить значение функции
-  * Описание: Возвращает значение f(x) для кусочно-заданной функции
-  * Параметры:
-  *   x - значение аргумента
-  *   status - указатель на флаг ошибки (0 - ошибка)
-  * Возвращает: значение f(x)
-  */
+#define EPSILON 1e-10
+#define STEP 0.001
+
 double calculateFunctionValue(double x, int* status)
 {
+    *status = 1;
+
     if (x < -1)
     {
-        // Кубический многочлен
         return x * x * x - 2 * x + 5;
     }
     else if (x >= -1 && x < 1)
     {
-        // Особый случай: функция не определена при x = 0
-        if (x == 0)
+        if (fabs(x) < EPSILON)
         {
-            *status = 0; // Флаг недопустимого значения
+            *status = 0;
             return 0;
         }
-
-        // Выражение с экспонентами
         return (exp(x) - exp(-x)) / (2 * x);
     }
     else
     {
-        // Приближение рядом Тейлора
         double result = 1.0;
         result -= (x * x) / 2.0;
         result += pow(x, 4) / 24.0;
@@ -54,100 +46,358 @@ double calculateFunctionValue(double x, int* status)
     }
 }
 
-/*
- * Функция: Выполнить тестирование функции
- * Описание: Вычисляет значения функции для набора тестов
- *           и выводит результаты в консоль
- */
-void runFunctionTests()
+double calculateDerivativeAnalytic(double x, int* status)
 {
-    // Тестовые значения аргумента
-    double testArguments[] =
-    { -3.0, -2.5, -2.0, -1.5, -1.0, -0.8, -0.5, -0.2,
-      0.2, 0.5, 0.8, 1.0, 1.5, 2.0, 2.5, 3.0 };
+    *status = 1;
 
-    int testCount = sizeof(testArguments) / sizeof(testArguments[0]);
-
-    printf("Результаты тестирования функции:\n");
-    printf("%-15s | %-15s\n", "Аргумент x", "f(x)");
-    printf("-----------------|-----------------\n");
-
-    for (int i = 0; i < testCount; i++)
+    if (x < -1)
     {
-        int status = 1; // Инициализация статуса
-        double result = calculateFunctionValue(testArguments[i], &status);
-
-        if (status == 0)
+        return 3 * x * x - 2;
+    }
+    else if (x > -1 && x < 1)
+    {
+        if (fabs(x) < EPSILON)
         {
-            printf("%-15.2lf | %s\n", testArguments[i], "Не определено");
+            *status = 0;
+            return 0;
+        }
+        double numerator = exp(x) + exp(-x);
+        double denominator = 2 * x;
+        return (numerator * denominator - (exp(x) - exp(-x)) * 2) / (denominator * denominator);
+    }
+    else if (x > 1)
+    {
+        double result = 0.0;
+        result -= x;
+        result += pow(x, 3) / 6.0;
+        result -= pow(x, 5) / 120.0;
+        result += pow(x, 7) / 5040.0;
+        return result;
+    }
+    else
+    {
+        *status = 1;
+        double h = 1e-7;
+        int status1 = 1, status2 = 1;
+        double fx_plus = calculateFunctionValue(x + h, &status1);
+        double fx_minus = calculateFunctionValue(x - h, &status2);
+        if (status1 == 0 || status2 == 0)
+        {
+            *status = 0;
+            return 0;
+        }
+        return (fx_plus - fx_minus) / (2 * h);
+    }
+}
+
+void findMinMax(double a, double b)
+{
+    int status;
+    double min_val, max_val;
+    double min_x = a, max_x = a;
+    int first = 1;
+
+    printf("\nПоиск экстремумов на отрезке [%.3f; %.3f]\n", a, b);
+    printf("------------------------------------------------\n");
+
+    for (double x = a; x <= b + EPSILON; x += STEP)
+    {
+        double fx = calculateFunctionValue(x, &status);
+
+        if (status == 0) continue;
+
+        if (first)
+        {
+            min_val = max_val = fx;
+            min_x = max_x = x;
+            first = 0;
         }
         else
         {
-            printf("%-15.2lf | %-15.5lf\n", testArguments[i], result);
+            if (fx < min_val)
+            {
+                min_val = fx;
+                min_x = x;
+            }
+            if (fx > max_val)
+            {
+                max_val = fx;
+                max_x = x;
+            }
+        }
+    }
+
+    if (!first)
+    {
+        printf("Минимум: f(%.4f) = %.6f\n", min_x, min_val);
+        printf("Максимум: f(%.4f) = %.6f\n", max_x, max_val);
+    }
+    else
+    {
+        printf("Не удалось найти значения функции на отрезке\n");
+    }
+}
+
+void checkMonotonicity(double a, double b)
+{
+    int status;
+    int increasing = 1;
+    int decreasing = 1;
+    double prev_x = a;
+    double prev_fx = calculateFunctionValue(prev_x, &status);
+
+    printf("\nПроверка на монотонность на отрезке [%.3f; %.3f]\n", a, b);
+    printf("------------------------------------------------\n");
+
+    if (status == 0)
+    {
+        printf("Функция не определена в начальной точке\n");
+        return;
+    }
+
+    for (double x = a + STEP; x <= b + EPSILON; x += STEP)
+    {
+        double fx = calculateFunctionValue(x, &status);
+
+        if (status == 0) continue;
+
+        if (fx < prev_fx - EPSILON)
+        {
+            increasing = 0;
+        }
+        if (fx > prev_fx + EPSILON)
+        {
+            decreasing = 0;
+        }
+
+        prev_x = x;
+        prev_fx = fx;
+    }
+
+    if (increasing)
+    {
+        printf("Функция возрастает на отрезке\n");
+    }
+    else if (decreasing)
+    {
+        printf("Функция убывает на отрезке\n");
+    }
+    else
+    {
+        printf("Функция не является монотонной на отрезке\n");
+    }
+}
+
+void printTable(double a, double b, double step)
+{
+    int status;
+
+    printf("\nТаблица значений функции на отрезке [%.3f; %.3f]\n", a, b);
+    printf("%-15s | %-15s\n", "x", "f(x)");
+    printf("-----------------|-----------------\n");
+
+    for (double x = a; x <= b + EPSILON; x += step)
+    {
+        double fx = calculateFunctionValue(x, &status);
+
+        if (status == 0)
+        {
+            printf("%-15.4lf | %s\n", x, "Не определено");
+        }
+        else
+        {
+            printf("%-15.4lf | %-15.6lf\n", x, fx);
         }
     }
 }
 
-/*
- * Функция: Инициализировать консоль для русского текста
- * Описание: Настраивает кодировку консоли для корректного
- *           отображения русских символов
- */
+void showMenu()
+{
+    printf("\n========================================\n");
+    printf("           МЕНЮ ПРОГРАММЫ\n");
+    printf("========================================\n");
+    printf("1. Вычислить значение f(x) в точке\n");
+    printf("2. Таблица значений x -> f(x) на интервале\n");
+    printf("3. Найти min/max (экстремумы) на отрезке\n");
+    printf("4. Проверка на монотонность на интервале\n");
+    printf("5. Вычислить производную f'(x) в точке\n");
+    printf("0. Выход\n");
+    printf("========================================\n");
+    printf("Выберите пункт меню: ");
+}
+
 void initializeConsole()
 {
-    // Настройка консоли в зависимости от ОС
 #ifdef _WIN32
-    // Конфигурация для Windows
     SetConsoleOutputCP(1251);
     SetConsoleCP(1251);
     setlocale(LC_ALL, "Russian");
 #else
-    // Конфигурация для Linux/macOS
     setlocale(LC_ALL, "ru_RU.UTF-8");
 #endif
 }
 
-/*
- * Главная функция программы
- * Описание: Организует ввод данных, вычисления и вывод результата
- */
 int main()
 {
-    // Инициализация консоли для русского текста
     initializeConsole();
 
-    // Вывод шапки программы
     printf("******************************************************\n");
     printf("* Факультет: ФИТКБ                                  *\n");
     printf("* Группа: бИЦ - 251                                 *\n");
     printf("* ФИО: Гаркин Алексей Андреевич                     *\n");
     printf("* Курсовая работа: Конструирование программы        *\n");
     printf("*         анализа функции                           *\n");
-    printf("******************************************************\n\n");
+    printf("******************************************************\n");
 
-    double argumentValue;
-    int calculationStatus = 1; // Статус вычислений (1 - норма, 0 - ошибка)
+    int choice;
+    double x, a, b, step;
+    int status;
+    double fx, fprime;
 
-    printf("Введите значение x: ");
-    if (scanf("%lf", &argumentValue) != 1)
+    do
     {
-        printf("Ошибка ввода. Пожалуйста, введите корректное числовое значение.\n");
-        return 1;
-    }
+        showMenu();
 
-    double functionValue = calculateFunctionValue(argumentValue, &calculationStatus);
+        if (scanf("%d", &choice) != 1)
+        {
+            printf("Ошибка ввода. Попробуйте снова.\n");
+            while (getchar() != '\n');
+            continue;
+        }
 
-    if (calculationStatus == 0)
-    {
-        printf("Функция не определена для x = 0\n");
-    }
-    else
-    {
-        printf("f(%.5lf) = %.5lf\n", argumentValue, functionValue);
-    }
+        switch (choice)
+        {
+        case 1:
+            printf("\nВведите значение x: ");
+            if (scanf("%lf", &x) != 1)
+            {
+                printf("Ошибка ввода.\n");
+                break;
+            }
 
-    printf("\nПроверка работы программы на наборе тестовых значений:\n");
-    runFunctionTests();
+            fx = calculateFunctionValue(x, &status);
+
+            if (status == 0)
+            {
+                printf("Функция не определена для x = %.5lf\n", x);
+            }
+            else
+            {
+                printf("f(%.5lf) = %.6lf\n", x, fx);
+            }
+            break;
+
+        case 2:
+            printf("\nВведите начало интервала a: ");
+            if (scanf("%lf", &a) != 1)
+            {
+                printf("Ошибка ввода.\n");
+                break;
+            }
+
+            printf("Введите конец интервала b: ");
+            if (scanf("%lf", &b) != 1)
+            {
+                printf("Ошибка ввода.\n");
+                break;
+            }
+
+            printf("Введите шаг таблицы: ");
+            if (scanf("%lf", &step) != 1 || step <= 0)
+            {
+                printf("Ошибка ввода шага.\n");
+                break;
+            }
+
+            if (a > b)
+            {
+                double temp = a;
+                a = b;
+                b = temp;
+            }
+
+            printTable(a, b, step);
+            break;
+
+        case 3:
+            printf("\nВведите начало отрезка a: ");
+            if (scanf("%lf", &a) != 1)
+            {
+                printf("Ошибка ввода.\n");
+                break;
+            }
+
+            printf("Введите конец отрезка b: ");
+            if (scanf("%lf", &b) != 1)
+            {
+                printf("Ошибка ввода.\n");
+                break;
+            }
+
+            if (a > b)
+            {
+                double temp = a;
+                a = b;
+                b = temp;
+            }
+
+            findMinMax(a, b);
+            break;
+
+        case 4:
+            printf("\nВведите начало интервала a: ");
+            if (scanf("%lf", &a) != 1)
+            {
+                printf("Ошибка ввода.\n");
+                break;
+            }
+
+            printf("Введите конец интервала b: ");
+            if (scanf("%lf", &b) != 1)
+            {
+                printf("Ошибка ввода.\n");
+                break;
+            }
+
+            if (a > b)
+            {
+                double temp = a;
+                a = b;
+                b = temp;
+            }
+
+            checkMonotonicity(a, b);
+            break;
+
+        case 5:
+            printf("\nВведите значение x: ");
+            if (scanf("%lf", &x) != 1)
+            {
+                printf("Ошибка ввода.\n");
+                break;
+            }
+
+            fprime = calculateDerivativeAnalytic(x, &status);
+
+            if (status == 0)
+            {
+                printf("Производная не определена для x = %.5lf\n", x);
+            }
+            else
+            {
+                printf("f'(%.5lf) = %.6lf\n", x, fprime);
+            }
+            break;
+
+        case 0:
+            printf("\nВыход из программы.\n");
+            break;
+
+        default:
+            printf("\nНеверный пункт меню. Попробуйте снова.\n");
+        }
+
+    } while (choice != 0);
 
     return 0;
 }
